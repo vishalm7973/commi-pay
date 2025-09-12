@@ -24,7 +24,7 @@ export class User {
     @Prop({ required: true, enum: UserRole })
     role: UserRole;
 
-    @Prop({ required: true })
+    @Prop({ required: false })
     avatarUrl: string;
 
     @Prop({ required: true })

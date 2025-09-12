@@ -5,7 +5,7 @@ import { UserRole } from 'src/common/enums/user-role.enum';
 import { User, UserDocument } from 'src/schemas/user.schema';
 import { CreateUserDto } from 'src/shared/dtos/user/create-user.dto';
 import { UpdateUserDto } from 'src/shared/dtos/user/update-user.dto';
-import { UserRequest, UserToken } from 'src/shared/interfaces/user-request.interface';
+import { UserToken } from 'src/shared/interfaces/user-request.interface';
 
 @Injectable()
 export class UserService {

@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { JwtAuthMiddleware } from './common/middleware/auth.middleware';
-import { JwtService } from '@nestjs/jwt';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 import { UserModule } from './modules/user/user.module';
 import { AdminSeed } from './seeds/admin.seed';
 import { User, UserSchema } from './schemas/user.schema';
@@ -24,6 +24,14 @@ const { ALL } = RequestMethod;
       }),
       inject: [ConfigService],
     }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: configService.get<string>('JWT_EXPIRATION') },
+      }),
+    }),
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     AuthModule,
     UserModule,
@@ -31,7 +39,7 @@ const { ALL } = RequestMethod;
     InstallmentModule,
   ],
   controllers: [],
-  providers: [JwtService, AdminSeed],
+  providers: [AdminSeed],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {

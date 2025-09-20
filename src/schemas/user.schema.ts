@@ -15,17 +15,17 @@ export class User {
     @Prop({ default: true })
     isActive: boolean;
 
-    @Prop({ required: false, unique: true })
-    email: string;
+    @Prop({ unique: true, sparse: true })
+    email?: string;
 
-    @Prop({ required: false })
-    password: string;
+    @Prop()
+    password?: string;
 
     @Prop({ required: true, enum: UserRole })
     role: UserRole;
 
-    @Prop({ required: false })
-    avatarUrl: string;
+    @Prop()
+    avatarUrl?: string;
 
     @Prop({ required: true })
     countryCode: string;

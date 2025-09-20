@@ -17,8 +17,37 @@ export class UserService {
     return await createdUser.save();
   }
 
-  async findAll(): Promise<User[]> {
-    return await this.userModel.find().exec();
+  async findAll(
+    user: UserToken,
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+  ): Promise<{ data: User[]; total: number; page: number; limit: number }> {
+    const createdById = new Types.ObjectId(user.id);
+    const query: any = {
+      createdBy: createdById,
+    };
+
+    if (search) {
+      const normalizedSearch = search.replace(/\s+/g, '');
+      query['$or'] = [
+        { firstName: { $regex: normalizedSearch, $options: 'i' } },
+        { lastName: { $regex: normalizedSearch, $options: 'i' } },
+        { phoneNumber: { $regex: normalizedSearch, $options: 'i' } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const total = await this.userModel.countDocuments(query);
+
+    const data = await this.userModel
+      .find(query)
+      .skip(skip)
+      .limit(limit)
+      .exec();
+
+    return { data, total, page, limit };
   }
 
   async findOne(id: string): Promise<User> {

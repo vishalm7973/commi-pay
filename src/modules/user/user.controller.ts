@@ -8,6 +8,7 @@ import {
   Delete,
   Req,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from 'src/shared/dtos/user/create-user.dto';
@@ -18,6 +19,7 @@ import {
   ApiOperation,
   ApiTags,
   ApiNotFoundResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { ApiResponseDto } from 'src/shared/dtos/api-response/api.response.dto';
 import type { UserRequest } from 'src/shared/interfaces/user-request.interface';
@@ -28,7 +30,7 @@ const { CREATED, OK } = HttpStatus;
 @ApiBearerAuth()
 @Controller('users')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(private readonly userService: UserService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a user' })
@@ -42,14 +44,27 @@ export class UserController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all users' })
+  @ApiOperation({ summary: 'Get all users with search and pagination' })
+  @ApiQuery({ name: 'page', required: false, default: 1, type: Number, description: 'Page number' })
+  @ApiQuery({ name: 'limit', required: false, default: 20, type: Number, description: 'Number of items per page' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search term for filtering users by name or phone' })
   @ApiOkResponse({
-    description: 'List of users retrieved',
+    description: 'List of users retrieved with pagination',
     type: ApiResponseDto,
   })
-  async findAll() {
-    const res = await this.userService.findAll();
-    return sendResponse(true, OK, 'List of users retrieved', res);
+  async findAll(
+    @Req() req: UserRequest,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+    @Query('search') search?: string,
+  ) {
+    // Validate & convert to numbers if needed
+    const pageNum = Number(page) > 0 ? Number(page) : 1;
+    const limitNum = Number(limit) > 0 ? Number(limit) : 10;
+
+    const result = await this.userService.findAll(req.user, pageNum, limitNum, search);
+
+    return sendResponse(true, OK, 'List of users retrieved', result);
   }
 
   @Get(':id')

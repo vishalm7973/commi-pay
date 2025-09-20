@@ -14,8 +14,8 @@ export class CreateUserDto {
 
   @ApiProperty({ description: 'URL of user avatar', example: 'https://example.com/avatar.jpg' })
   @IsString({ message: 'Avatar URL must be a string' })
-  @IsNotEmpty({ message: 'Avatar URL is required' })
-  avatarUrl: string;
+  @IsOptional()
+  avatarUrl?: string;
 
   @ApiProperty({ description: 'Country dial code', example: '+1' })
   @IsString({ message: 'Country code must be a string' })

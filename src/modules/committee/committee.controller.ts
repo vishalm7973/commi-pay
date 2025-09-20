@@ -9,11 +9,13 @@ import {
   Req,
   HttpStatus,
   Patch,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBody, ApiCreatedResponse, ApiOkResponse, ApiOperation,
   ApiTags, ApiNotFoundResponse,
-  ApiBearerAuth
+  ApiBearerAuth,
+  ApiQuery
 } from '@nestjs/swagger';
 import { CommitteeService } from './committee.service';
 import { sendResponse } from 'src/common/utils/response.util';
@@ -39,10 +41,22 @@ export class CommitteeController {
 
   @Get()
   @ApiOperation({ summary: 'Get all committees' })
+  @ApiQuery({ name: 'page', required: false, default: 1, type: Number, description: 'Page number' })
+  @ApiQuery({ name: 'limit', required: false, default: 10, type: Number, description: 'Number of items per page' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search term for filtering committees by amount' })
   @ApiOkResponse({ description: 'Committees fetched successfully' })
-  async findAll(@Req() req: UserRequest) {
-    const response = await this.committeeService.findAll(req.user);
-    return sendResponse(true, OK, 'Committees fetched successfully', response);
+  async findAll(
+    @Req() req: UserRequest,
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+    @Query('search') search?: string,
+  ) {
+    // Validate & convert to numbers if needed
+    const pageNum = Number(page) > 0 ? Number(page) : 1;
+    const limitNum = Number(limit) > 0 ? Number(limit) : 10;
+
+    const result = await this.committeeService.findAll(req.user, pageNum, limitNum, search);
+    return sendResponse(true, OK, 'Committees fetched successfully', result);
   }
 
   @Get(':id')

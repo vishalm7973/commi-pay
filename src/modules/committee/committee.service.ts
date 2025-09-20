@@ -34,9 +34,39 @@ export class CommitteeService {
         return await createdCommittee.save();
     }
 
-    async findAll(user: UserToken): Promise<Committee[]> {
+    async findAll(
+        user: UserToken,
+        page: number = 1,
+        limit: number = 10,
+        search?: string,
+    ): Promise<{ data: Committee[]; total: number; page: number; limit: number }> {
         const createdById = new Types.ObjectId(user.id);
-        return await this.committeeModel.find({ createdBy: createdById }).exec();
+        const query: any = {
+            createdBy: createdById,
+        };
+        if (search) {
+            // Try to parse search for numeric amount
+            const amountSearch = Number(search);
+
+            query['$or'] = [];
+
+            if (!isNaN(amountSearch)) {
+                query['$or'].push({ amount: amountSearch });
+            }
+        }
+
+        const skip = (page - 1) * limit;
+
+        const total = await this.committeeModel.countDocuments(query);
+
+        const data = await this.committeeModel
+            .find(query)
+            .sort({ createdAt: -1 }) // latest first
+            .skip(skip)
+            .limit(limit)
+            .exec();
+
+        return { data, total, page, limit };
     }
 
     async findById(id: string, user: UserToken): Promise<Committee> {

@@ -18,8 +18,13 @@ export class Committee {
     @Prop({ required: true })
     endDate: Date;
 
-    @Prop({ required: true })
-    dueDate: Date;
+    @Prop({
+        type: Number,
+        min: 1,
+        max: 31,
+        required: true,
+    })
+    monthlyDueDay: number;
 
     @Prop({ type: [{ type: Types.ObjectId, ref: User.name }], default: [] })
     members: Types.ObjectId[];

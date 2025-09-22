@@ -26,7 +26,7 @@ import type { UserRequest } from 'src/shared/interfaces/user-request.interface';
 import { sendResponse } from 'src/common/utils/response.util';
 const { CREATED, OK } = HttpStatus;
 
-@ApiTags('Users')
+@ApiTags('Admin Users')
 @ApiBearerAuth()
 @Controller('users')
 export class UserController {

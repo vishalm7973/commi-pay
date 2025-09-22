@@ -24,7 +24,7 @@ import type { UserRequest } from 'src/shared/interfaces/user-request.interface';
 import { UpdateCommitteeDto } from 'src/shared/dtos/committee/update-committee.dto';
 const { OK, CREATED } = HttpStatus;
 
-@ApiTags('committee')
+@ApiTags('Committee')
 @ApiBearerAuth()
 @Controller('committee')
 export class CommitteeController {

@@ -120,7 +120,6 @@ export class InstallmentService {
         return payment.save();
     }
 
-
     async delete(installmentId: string, user: UserToken): Promise<boolean> {
         const session = await this.connection.startSession();
         session.startTransaction();
@@ -149,8 +148,15 @@ export class InstallmentService {
         }
     }
 
-    async getInstallments(committeeId: string, user: UserToken): Promise<Installment[]> {
+    async getInstallments(
+        committeeId: string,
+        user: UserToken,
+        page: number = 1,
+        limit: number = 10,
+        search?: string
+    ): Promise<{ data: Installment[]; total: number; page: number; limit: number }> {
         const createdById = new Types.ObjectId(user.id);
+
         const committee = await this.committeeModel
             .findOne({ _id: committeeId, createdBy: createdById })
             .select('_id').lean();
@@ -158,25 +164,159 @@ export class InstallmentService {
             throw new NotFoundException('Committee not found');
         }
 
-        return await this.installmentModel
-            .find({ committee: committee._id, createdBy: createdById })
+        const query: any = {
+            committee: committee._id,
+            createdBy: createdById,
+        };
+        if (search) {
+            // Try to parse search for numeric amount
+            const amountSearch = Number(search);
+
+            query['$or'] = [];
+
+            if (!isNaN(amountSearch)) {
+                query['$or'].push({ monthlyContribution: amountSearch });
+            }
+        }
+
+        const skip = (page - 1) * limit;
+
+        const total = await this.installmentModel.countDocuments(query);
+
+        const data = await this.installmentModel
+            .find(query)
             .sort({ createdAt: 1 })
+            .skip(skip)
+            .limit(limit)
             .exec();
+
+        return { data, total, page, limit };
     }
 
-    async getPaymentsForInstallment(installmentId: string, user: UserToken): Promise<InstallmentPayment[]> {
+    async getPaymentsForInstallment(
+        installmentId: string,
+        user: UserToken,
+        page: number = 1,
+        limit: number = 10,
+        search?: string
+    ): Promise<{
+        data: InstallmentPayment[];
+        total: number;
+        page: number;
+        limit: number;
+        paid: number;
+    }> {
         const createdById = new Types.ObjectId(user.id);
+
+        // verify installment exists and belongs to user
         const installment = await this.installmentModel
             .findOne({ _id: installmentId, createdBy: createdById })
-            .select('_id').lean();
+            .select('_id')
+            .lean();
+
         if (!installment) {
             throw new NotFoundException('Installment not found');
         }
 
-        return await this.paymentModel
-            .find({ installment: installment._id, createdBy: createdById })
+        const baseMatch: any = {
+            installment: installment._id,
+            createdBy: createdById,
+        };
+
+        const postLookupMatchClauses: any[] = [];
+        if (search && search.trim().length > 0) {
+            const trimmed = search.trim();
+            const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escapeRegex(trimmed), 'i');
+
+            postLookupMatchClauses.push({
+                $or: [
+                    { 'member.firstName': { $regex: regex } },
+                    { 'member.lastName': { $regex: regex } }
+                ]
+            });
+        }
+
+        const skip = (page - 1) * limit;
+
+        const pipeline: any[] = [
+            { $match: baseMatch },
+
+            {
+                $lookup: {
+                    from: 'users',
+                    let: { memberId: '$member' },
+                    pipeline: [
+                        { $match: { $expr: { $eq: ['$_id', '$$memberId'] } } },
+                        {
+                            $project: {
+                                id: '$_id',
+                                _id: 0,
+                                firstName: 1,
+                                lastName: 1,
+                                countryCode: 1,
+                                phoneNumber: 1,
+                            }
+                        }
+                    ],
+                    as: 'member'
+                }
+            },
+
+            { $unwind: '$member' },
+
+            {
+                $project: {
+                    id: '$_id',
+                    _id: 0,
+                    installment: 1,
+                    member: 1,
+                    paymentDate: 1,
+                    status: 1,
+                }
+            }
+        ];
+
+        if (postLookupMatchClauses.length) {
+            pipeline.push({
+                $match:
+                    postLookupMatchClauses.length === 1
+                        ? postLookupMatchClauses[0]
+                        : { $and: postLookupMatchClauses }
+            });
+        }
+
+        pipeline.push(
+            { $sort: { createdAt: 1 } },
+            {
+                $facet: {
+                    data: [{ $skip: skip }, { $limit: limit }],
+                    total: [{ $count: 'count' }],
+                    paid: [
+                        { $match: { paymentDate: { $ne: null } } },
+                        { $count: 'count' }
+                    ]
+                }
+            }
+        );
+
+        const result = await this.paymentModel.aggregate(pipeline);
+
+        const rawData = result?.[0]?.data || [];
+        const total = result?.[0]?.total?.[0]?.count ?? 0;
+        const paid = result?.[0]?.paid?.[0]?.count ?? 0;
+
+        return { data: rawData, total, page, limit, paid };
+    }
+
+    async getPaymentDetails(paymentId: string, user: UserToken): Promise<InstallmentPayment> {
+        const createdById = new Types.ObjectId(user.id);
+        const payment = await this.paymentModel
+            .findOne({ _id: paymentId, createdBy: createdById })
             .populate('member')
-            .sort({ createdAt: 1 })
+            .populate('installment')
             .exec();
+        if (!payment) throw new NotFoundException('Payment record not found');
+        return payment;
     }
 }

@@ -7,12 +7,14 @@ import {
     Param,
     Get,
     Delete,
+    Query,
 } from '@nestjs/common';
 import {
     ApiBearerAuth,
     ApiBody, ApiCreatedResponse, ApiOperation,
     ApiOkResponse, ApiTags,
     ApiNotFoundResponse,
+    ApiQuery,
 } from '@nestjs/swagger';
 import { InstallmentService } from './installment.service';
 import { CreateInstallmentDto } from 'src/shared/dtos/installment/create-installment.dto';
@@ -23,7 +25,7 @@ import { HttpStatus } from '@nestjs/common';
 
 const { OK, CREATED } = HttpStatus;
 
-@ApiTags('installment')
+@ApiTags('Installments')
 @ApiBearerAuth()
 @Controller('installment')
 export class InstallmentController {
@@ -63,17 +65,49 @@ export class InstallmentController {
 
     @Get(':committeeId')
     @ApiOperation({ summary: 'Get installments for user\'s committees' })
+    @ApiQuery({ name: 'page', required: false, default: 1, type: Number, description: 'Page number' })
+    @ApiQuery({ name: 'limit', required: false, default: 10, type: Number, description: 'Number of items per page' })
+    @ApiQuery({ name: 'search', required: false, type: String, description: 'Search term for filtering installments by amount' })
     @ApiOkResponse({ description: 'Installments fetched' })
-    async getInstallments(@Param('committeeId') committeeId: string, @Req() req: UserRequest) {
-        const response = await this.installmentService.getInstallments(committeeId, req.user);
+    async getInstallments(
+        @Param('committeeId') committeeId: string,
+        @Req() req: UserRequest,
+        @Query('page') page = 1,
+        @Query('limit') limit = 10,
+        @Query('search') search?: string,
+    ) {
+        const pageNum = Number(page) > 0 ? Number(page) : 1;
+        const limitNum = Number(limit) > 0 ? Number(limit) : 10;
+
+        const response = await this.installmentService.getInstallments(committeeId, req.user, pageNum, limitNum, search);
         return sendResponse(true, OK, 'Installments fetched successfully', response);
     }
 
     @Get(':installmentId/payments')
     @ApiOperation({ summary: 'Get payment records for an installment' })
+    @ApiQuery({ name: 'page', required: false, default: 1, type: Number, description: 'Page number' })
+    @ApiQuery({ name: 'limit', required: false, default: 10, type: Number, description: 'Number of items per page' })
+    @ApiQuery({ name: 'search', required: false, type: String, description: 'Search term for filtering payments by amount' })
     @ApiOkResponse({ description: 'Payment records fetched' })
-    async getPaymentsForInstallment(@Param('installmentId') installmentId: string, @Req() req: UserRequest) {
-        const response = await this.installmentService.getPaymentsForInstallment(installmentId, req.user);
+    async getPaymentsForInstallment(
+        @Param('installmentId') installmentId: string,
+        @Req() req: UserRequest,
+        @Query('page') page = 1,
+        @Query('limit') limit = 10,
+        @Query('search') search?: string
+    ) {
+        const pageNum = Number(page) > 0 ? Number(page) : 1;
+        const limitNum = Number(limit) > 0 ? Number(limit) : 10;
+
+        const response = await this.installmentService.getPaymentsForInstallment(installmentId, req.user, pageNum, limitNum, search);
         return sendResponse(true, OK, 'Payment records fetched successfully', response);
+    }
+
+    @Get('payments/:paymentId')
+    @ApiOperation({ summary: 'Get payment record for an installment' })
+    @ApiOkResponse({ description: 'Payment record fetched successfully' })
+    async getPaymentDetails(@Param('paymentId') paymentId: string, @Req() req: UserRequest) {
+        const response = await this.installmentService.getPaymentDetails(paymentId, req.user);
+        return sendResponse(true, OK, 'Payment record fetched successfully', response);
     }
 }

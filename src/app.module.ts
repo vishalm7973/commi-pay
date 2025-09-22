@@ -3,13 +3,15 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { JwtAuthMiddleware } from './common/middleware/auth.middleware';
-import { JwtModule, JwtService } from '@nestjs/jwt';
+import { JwtModule } from '@nestjs/jwt';
 import { UserModule } from './modules/user/user.module';
 import { AdminSeed } from './seeds/admin.seed';
 import { User, UserSchema } from './schemas/user.schema';
 import { AuthModule } from './modules/auth/auth.module';
 import { CommitteeModule } from './modules/committee/committee.module';
 import { InstallmentModule } from './modules/installment/installment.module';
+import { CurrentUserModule } from './modules/current-user/current-user.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 const { ALL } = RequestMethod;
 
 @Module({
@@ -34,9 +36,11 @@ const { ALL } = RequestMethod;
     }),
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     AuthModule,
+    CurrentUserModule,
     UserModule,
     CommitteeModule,
     InstallmentModule,
+    AnalyticsModule,
   ],
   controllers: [],
   providers: [AdminSeed],

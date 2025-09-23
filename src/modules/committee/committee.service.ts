@@ -68,6 +68,7 @@ export class CommitteeService {
 
         return { data, total, page, limit };
     }
+    
     async findById(id: string, user: UserToken): Promise<Committee> {
         const createdById = new Types.ObjectId(user.id);
         const committee = await this.committeeModel

@@ -6,11 +6,14 @@ import { InstallmentPayment, InstallmentPaymentDocument } from 'src/schemas/inst
 import type { UserToken } from 'src/shared/interfaces/user-request.interface';
 import { Committee, CommitteeDocument } from 'src/schemas/committee.schema';
 import { PaymentStatus } from 'src/common/enums/payment.enum';
+import { UserDocument } from 'src/schemas/user.schema';
+import { UserRole } from 'src/common/enums/user-role.enum';
 
 @Injectable()
 export class AnalyticsService {
     constructor(
         @InjectModel(Installment.name) private installmentModel: Model<InstallmentDocument>,
+        @InjectModel(Installment.name) private userModel: Model<UserDocument>,
         @InjectModel(InstallmentPayment.name) private paymentModel: Model<InstallmentPaymentDocument>,
         @InjectModel(Committee.name) private committeeModel: Model<CommitteeDocument>,
     ) { }
@@ -160,105 +163,158 @@ export class AnalyticsService {
         };
     }
 
+    async getDashboardStats(user: UserToken) {
+        const ownerId = new Types.ObjectId(user.id);
 
-    // async getPendingPaymentsReportAgg(memberId: string, user: UserToken) {
-    //     const createdById = new Types.ObjectId(user.id);
-    //     const memberObjectId = new Types.ObjectId(memberId);
+        // prepare three DB ops and run in parallel
+        const committeesCountPromise = this.committeeModel.countDocuments({ createdBy: ownerId });
+        const membersCountPromise = this.userModel.countDocuments({ createdBy: ownerId });
 
-    //     const pipeline: any[] = [
-    //         {
-    //             $match: {
-    //                 createdBy: createdById,
-    //                 member: memberObjectId,
-    //                 status: PaymentStatus.PENDING,
-    //             },
-    //         },
+        // aggregation to count distinct members with at least one pending payment
+        const pendingMembersCountPromise = this.paymentModel.aggregate([
+            { $match: { createdBy: ownerId, status: PaymentStatus.PENDING } },
+            { $group: { _id: '$member' } },        // one group per member
+            { $count: 'pendingMembersCount' },     // count number of groups
+        ]).exec();
 
-    //         // lookup installment
-    //         {
-    //             $lookup: {
-    //                 from: 'installments',
-    //                 localField: 'installment',
-    //                 foreignField: '_id',
-    //                 as: 'installmentDoc',
-    //             },
-    //         },
-    //         { $unwind: { path: '$installmentDoc', preserveNullAndEmptyArrays: true } },
+        const [committeesCount, membersCount, pendingAggResult] = await Promise.all([
+            committeesCountPromise,
+            membersCountPromise,
+            pendingMembersCountPromise,
+        ]);
 
-    //         // lookup committee inside installmentDoc
-    //         {
-    //             $lookup: {
-    //                 from: 'committees',
-    //                 localField: 'installmentDoc.committee',
-    //                 foreignField: '_id',
-    //                 as: 'committeeDoc',
-    //             },
-    //         },
-    //         { $unwind: { path: '$committeeDoc', preserveNullAndEmptyArrays: true } },
+        const pendingMembersCount = (pendingAggResult && pendingAggResult[0] && pendingAggResult[0].pendingMembersCount) || 0;
 
-    //         // compute monthlyContribution, amountPaid and pendingAmount
-    //         {
-    //             $addFields: {
-    //                 monthlyContribution: { $ifNull: ['$installmentDoc.monthlyContribution', 0] },
-    //                 amountPaid: { $ifNull: ['$amountPaid', 0] },
-    //             },
-    //         },
-    //         {
-    //             $addFields: {
-    //                 pendingAmount: { $max: [{ $subtract: ['$monthlyContribution', '$amountPaid'] }, 0] },
-    //             },
-    //         },
+        return {
+            committees: committeesCount,
+            members: membersCount,
+            pendingMembers: pendingMembersCount,
+        };
+    }
 
-    //         // group by committee + installment (for this member only)
-    //         {
-    //             $group: {
-    //                 _id: {
-    //                     committeeId: '$committeeDoc._id',
-    //                     installmentId: '$installmentDoc._id',
-    //                 },
-    //                 committee: { $first: '$committeeDoc' },
-    //                 installment: { $first: '$installmentDoc' },
-    //                 totalPendingAmount: { $sum: '$pendingAmount' },
-    //                 payments: {
-    //                     $push: {
-    //                         paymentId: '$_id',
-    //                         amountPaid: '$amountPaid',
-    //                         monthlyContribution: '$monthlyContribution',
-    //                         pendingAmount: '$pendingAmount',
-    //                         paymentDate: '$paymentDate',
-    //                         status: '$status',
-    //                     },
-    //                 },
-    //             },
-    //         },
+    // Helper to escape regex special chars
+    escapeRegExp(str: string) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
 
-    //         // reshape
-    //         {
-    //             $project: {
-    //                 _id: 0,
-    //                 committee: 1,
-    //                 installment: 1,
-    //                 totalPendingAmount: 1,
-    //                 payments: 1,
-    //             },
-    //         },
+    async getPendingMembers(user: UserToken, page = 1, limit = 10, search?: string) {
+        const ownerId = new Types.ObjectId(user.id);
+        const skip = (Math.max(1, page) - 1) * Math.max(1, limit);
 
-    //         // optional sort
-    //         { $sort: { 'committee._id': 1, 'installment._id': 1 } },
-    //     ];
+        const rawSearch = (search ?? '').trim();
+        const searchNormalized = rawSearch.length
+            ? rawSearch.replace(/\s+/g, '').toLowerCase()
+            : '';
 
-    //     const grouped = await this.paymentModel.aggregate(pipeline).exec();
+        const escapeForRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    //     // compute grand total for this member
-    //     const summary = grouped.reduce(
-    //         (acc, g) => {
-    //             acc.totalPendingAmount += g.totalPendingAmount ?? 0;
-    //             acc.totalPendingCount += g.payments.length ?? 0;
-    //             return acc;
-    //         },
-    //         { totalPendingAmount: 0, totalPendingCount: 0 },
-    //     );
+        const pipeline: any[] = [
+            { $match: { createdBy: ownerId, status: PaymentStatus.PENDING } },
 
-    //     return { groups: grouped, summary };
-    // }
+            {
+                $lookup: {
+                    from: 'installments',
+                    localField: 'installment',
+                    foreignField: '_id',
+                    as: 'installmentDoc',
+                },
+            },
+            { $unwind: { path: '$installmentDoc', preserveNullAndEmptyArrays: true } },
+
+            {
+                $addFields: {
+                    monthlyContribution: { $ifNull: ['$installmentDoc.monthlyContribution', 0] },
+                    amountPaid: { $ifNull: ['$amountPaid', 0] },
+                },
+            },
+            {
+                $addFields: {
+                    pendingAmount: { $max: [{ $subtract: ['$monthlyContribution', '$amountPaid'] }, 0] },
+                },
+            },
+
+            { $match: { pendingAmount: { $gt: 0 } } },
+
+            {
+                $group: {
+                    _id: '$member',
+                    totalPendingAmount: { $sum: '$pendingAmount' },
+                    pendingCount: { $sum: 1 },
+                },
+            },
+
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'memberDoc',
+                },
+            },
+            // keep even if no match
+            { $unwind: { path: '$memberDoc', preserveNullAndEmptyArrays: true } },
+
+            // ⚠️ remove strict role/createdBy filter for now
+            // { $match: { 'memberDoc.role': 'member' } },
+
+            {
+                $addFields: {
+                    normalizedFirstName: {
+                        $toLower: { $replaceAll: { input: { $ifNull: ['$memberDoc.firstName', ''] }, find: ' ', replacement: '' } },
+                    },
+                    normalizedLastName: {
+                        $toLower: { $replaceAll: { input: { $ifNull: ['$memberDoc.lastName', ''] }, find: ' ', replacement: '' } },
+                    },
+                    normalizedPhoneNumber: {
+                        $toLower: { $replaceAll: { input: { $ifNull: ['$memberDoc.phoneNumber', ''] }, find: ' ', replacement: '' } },
+                    },
+                },
+            },
+        ];
+
+        if (searchNormalized) {
+            const regex = new RegExp(escapeForRegex(searchNormalized), 'i');
+            pipeline.push({
+                $match: {
+                    $or: [
+                        { normalizedFirstName: { $regex: regex } },
+                        { normalizedLastName: { $regex: regex } },
+                        { normalizedPhoneNumber: { $regex: regex } },
+                    ],
+                },
+            });
+        }
+
+        pipeline.push({
+            $facet: {
+                data: [
+                    { $sort: { 'memberDoc.firstName': 1, 'memberDoc.lastName': 1 } },
+                    { $skip: skip },
+                    { $limit: Math.max(1, limit) },
+                    {
+                        $project: {
+                            _id: 0,
+                            id: '$_id',
+                            firstName: '$memberDoc.firstName',
+                            lastName: '$memberDoc.lastName',
+                            phoneNumber: '$memberDoc.phoneNumber',
+                            totalPendingAmount: 1,
+                            pendingCount: 1,
+                        },
+                    },
+                ],
+                total: [{ $count: 'count' }],
+            },
+        });
+
+        const [result] = await this.paymentModel.aggregate(pipeline).exec();
+
+        return {
+            data: result?.data ?? [],
+            total: result?.total?.[0]?.count ?? 0,
+            page: Math.max(1, page),
+            limit: Math.max(1, limit),
+        };
+    }
+
 }

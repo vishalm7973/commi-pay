@@ -1,23 +1,16 @@
 import {
     Controller,
-    Post,
-    Body,
     Req,
-    Patch,
     Param,
     Get,
-    Delete,
     Query,
 } from '@nestjs/common';
 import {
     ApiBearerAuth,
-    ApiBody, ApiCreatedResponse, ApiOperation,
+    ApiOperation,
     ApiOkResponse, ApiTags,
-    ApiNotFoundResponse,
     ApiQuery,
 } from '@nestjs/swagger';
-import { CreateInstallmentDto } from 'src/shared/dtos/installment/create-installment.dto';
-import { UpdateInstallmentPaymentDto } from 'src/shared/dtos/installment/update-installment-payment.dto';
 import { sendResponse } from 'src/common/utils/response.util';
 import type { UserRequest } from 'src/shared/interfaces/user-request.interface';
 import { HttpStatus } from '@nestjs/common';
@@ -37,5 +30,38 @@ export class AnalyticsController {
     async getPaymentDetails(@Param('memberId') memberId: string, @Req() req: UserRequest) {
         const response = await this.analyticsService.getPendingPaymentsReportAgg(memberId, req.user);
         return sendResponse(true, OK, 'Pending payment records fetched successfully', response);
+    }
+
+    @Get('stats')
+    @ApiOperation({ summary: 'Get dashboard stats' })
+    @ApiOkResponse({ description: 'Dashboard stats fetched successfully' })
+    async getDashboardStats(@Req() req: UserRequest) {
+        const response = await this.analyticsService.getDashboardStats(req.user);
+        return sendResponse(true, OK, 'Dashboard stats fetched successfully', response);
+    }
+
+    @Get('pending-members')
+    @ApiOperation({ summary: 'Get members with pending payments (paginated, searchable)' })
+    @ApiOkResponse({ description: 'Pending members fetched successfully' })
+    @ApiQuery({ name: 'page', required: false, default: 1, description: 'Page number', type: Number })
+    @ApiQuery({ name: 'limit', required: false, default: 10, description: 'Page size', type: Number })
+    @ApiQuery({ name: 'search', required: false, description: 'Search string (first name / last name / phone number)' })
+    async getPendingMembers(
+        @Req() req: UserRequest,
+        @Query('page') pageQuery?: string,
+        @Query('limit') limitQuery?: string,
+        @Query('search') search?: string,
+    ) {
+        const page = Math.max(1, Number.parseInt(pageQuery ?? '1', 10) || 1);
+        const limit = Math.max(1, Number.parseInt(limitQuery ?? '10', 10) || 10);
+
+        const response = await this.analyticsService.getPendingMembers(
+            req.user,
+            page,
+            limit,
+            search,
+        );
+
+        return sendResponse(true, OK, 'Pending members fetched successfully', response);
     }
 }

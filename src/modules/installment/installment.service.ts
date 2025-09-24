@@ -41,6 +41,8 @@ export class InstallmentService {
                 winningBidder: new Types.ObjectId(createInstallmentDto.winningBidder),
                 monthlyContribution,
                 startingBid: createInstallmentDto.startingBid,
+                month: createInstallmentDto.month,
+                year: createInstallmentDto.year,
                 isSettled: false,
                 settlementDate: null,
                 createdBy: createdById,

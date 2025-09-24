@@ -38,6 +38,7 @@ export class InstallmentService {
 
             const installmentData = {
                 committee: committee._id,
+                winningBidder: new Types.ObjectId(createInstallmentDto.winningBidder),
                 monthlyContribution,
                 startingBid: createInstallmentDto.startingBid,
                 isSettled: false,
@@ -185,6 +186,7 @@ export class InstallmentService {
 
         const data = await this.installmentModel
             .find(query)
+            .populate('winningBidder', 'firstName lastName countryCode phoneNumber')
             .sort({ createdAt: 1 })
             .skip(skip)
             .limit(limit)

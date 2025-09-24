@@ -16,11 +16,11 @@ export class Installment {
   @Prop({ required: true })
   startingBid: number; // Starting bid value for the bidding process
 
-  @Prop({ type: Types.ObjectId, ref: User.name, required: false })
-  winningBidder?: Types.ObjectId; // User who wins the bid this month
+  @Prop({ type: Types.ObjectId, ref: User.name, required: true })
+  winningBidder: Types.ObjectId; // User who wins the bid this month
 
-  @Prop({ required: false })
-  winningBidAmount?: number; // Winning bid amount for this installment
+  @Prop({ required: true })
+  winningBidAmount: number; // Winning bid amount for this installment
 
   @Prop({ default: false })
   isSettled: boolean; // True if the installment (bidding and payment) completed

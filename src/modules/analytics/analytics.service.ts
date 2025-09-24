@@ -254,9 +254,6 @@ export class AnalyticsService {
             // keep even if no match
             { $unwind: { path: '$memberDoc', preserveNullAndEmptyArrays: true } },
 
-            // ⚠️ remove strict role/createdBy filter for now
-            // { $match: { 'memberDoc.role': 'member' } },
-
             {
                 $addFields: {
                     normalizedFirstName: {

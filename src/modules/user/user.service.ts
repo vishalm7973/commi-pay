@@ -43,6 +43,8 @@ export class UserService {
 
     const data = await this.userModel
       .find(query)
+      .collation({ locale: 'en', strength: 2 }) // case-insensitive sort
+      .sort({ firstName: 1, lastName: 1 }) // primary sort by firstName, tie-breaker lastName
       .skip(skip)
       .limit(limit)
       .exec();

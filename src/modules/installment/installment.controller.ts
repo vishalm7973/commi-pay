@@ -103,6 +103,14 @@ export class InstallmentController {
         return sendResponse(true, OK, 'Payment records fetched successfully', response);
     }
 
+    @Get(':committeeId/available-members')
+    @ApiOperation({ summary: 'Get available members for an installment of a committee' })
+    @ApiOkResponse({ description: 'Available members fetched successfully' })
+    async getAvailableMembers(@Param('committeeId') committeeId: string, @Req() req: UserRequest,) {
+        const response = await this.installmentService.getAvailableMembersForCommittee(committeeId, req.user);
+        return sendResponse(true, OK, 'Available members fetched successfully', response);
+    }
+
     @Get('payments/:paymentId')
     @ApiOperation({ summary: 'Get payment record for an installment' })
     @ApiOkResponse({ description: 'Payment record fetched successfully' })

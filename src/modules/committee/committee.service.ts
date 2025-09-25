@@ -68,12 +68,18 @@ export class CommitteeService {
 
         return { data, total, page, limit };
     }
-    
+
     async findById(id: string, user: UserToken): Promise<Committee> {
         const createdById = new Types.ObjectId(user.id);
         const committee = await this.committeeModel
             .findOne({ _id: id, createdBy: createdById })
-            .populate('members')
+            .populate({
+                path: 'members',
+                options: {
+                    sort: { firstName: 1, lastName: 1 },           // primary sort by firstName
+                    collation: { locale: 'en', strength: 2 },      // case-insensitive sort
+                },
+            })
             .exec();
         if (!committee) throw new NotFoundException(`Committee with id ${id} not found`);
         return committee;

@@ -8,11 +8,13 @@ import { UpdateInstallmentPaymentDto } from 'src/shared/dtos/installment/update-
 import type { UserToken } from 'src/shared/interfaces/user-request.interface';
 import { Committee, CommitteeDocument } from 'src/schemas/committee.schema';
 import { PaymentStatus } from 'src/common/enums/payment.enum';
+import { User, UserDocument } from 'src/schemas/user.schema';
 
 @Injectable()
 export class InstallmentService {
     constructor(
         @InjectModel(Installment.name) private installmentModel: Model<InstallmentDocument>,
+        @InjectModel(User.name) private userModel: Model<UserDocument>,
         @InjectModel(InstallmentPayment.name) private paymentModel: Model<InstallmentPaymentDocument>,
         @InjectModel(Committee.name) private committeeModel: Model<CommitteeDocument>,
         @InjectConnection() private readonly connection: Connection,
@@ -189,12 +191,148 @@ export class InstallmentService {
         const data = await this.installmentModel
             .find(query)
             .populate('winningBidder', 'firstName lastName countryCode phoneNumber')
-            .sort({ createdAt: 1 })
+            .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
             .exec();
 
         return { data, total, page, limit };
+    }
+
+    async getAvailableMembersForCommittee(committeeId: string, user: UserToken): Promise<User[]> {
+        if (!user || !user.id) throw new Error('user token required');
+        const createdById = new Types.ObjectId(user.id);
+        const committeeObjectId = new Types.ObjectId(committeeId);
+        const installmentsColl = this.installmentModel.collection.name;
+        const usersColl = this.userModel.collection.name;
+
+        const pipeline = [
+            // 1. Match committee + ownership
+            { $match: { _id: committeeObjectId, createdBy: createdById } },
+
+            // 2. Safely extract members, always as ObjectId
+            {
+                $project: {
+                    members: {
+                        $map: {
+                            input: { $ifNull: ['$members', []] },
+                            as: 'm',
+                            in: {
+                                $cond: [
+                                    { $eq: [{ $type: '$$m' }, 'objectId'] },
+                                    '$$m',
+                                    { $toObjectId: '$$m' }
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+
+            // 3. Lookup installments winningBidder for this committeeId and creator
+            {
+                $lookup: {
+                    from: installmentsColl,
+                    let: { committeeId: '$_id', creatorId: createdById },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ['$committee', '$$committeeId'] },
+                                        { $eq: ['$createdBy', '$$creatorId'] },
+                                        { $ne: ['$winningBidder', null] }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            $project: {
+                                winningBidderId: {
+                                    $cond: [
+                                        { $eq: [{ $type: '$winningBidder' }, 'objectId'] },
+                                        '$winningBidder',
+                                        { $toObjectId: '$winningBidder' }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: 'usedWinners'
+                }
+            },
+
+            // 4. Collect winningBidder ObjectIds
+            {
+                $addFields: {
+                    usedWinningIds: {
+                        $map: {
+                            input: '$usedWinners',
+                            as: 'doc',
+                            in: '$$doc.winningBidderId'
+                        }
+                    }
+                }
+            },
+
+            // 5. Compute set difference (unused members)
+            {
+                $addFields: {
+                    unusedMemberIds: {
+                        $setDifference: ['$members', { $ifNull: ['$usedWinningIds', []] }]
+                    }
+                }
+            },
+
+            // 6. Lookup user details for unused members
+            {
+                $lookup: {
+                    from: usersColl,
+                    localField: 'unusedMemberIds',
+                    foreignField: '_id',
+                    as: 'unusedUsersDetail'
+                }
+            },
+
+            // 7. Sanitize fields for response
+            {
+                $addFields: {
+                    sanitizedUsers: {
+                        $map: {
+                            input: '$unusedUsersDetail',
+                            as: 'u',
+                            in: {
+                                id: '$$u._id',
+                                firstName: '$$u.firstName',
+                                lastName: '$$u.lastName',
+                                countryCode: '$$u.countryCode',
+                                phoneNumber: '$$u.phoneNumber',
+                            }
+                        }
+                    }
+                }
+            },
+
+            {
+                $addFields: {
+                    sanitizedUsers: {
+                        $sortArray: { input: '$sanitizedUsers', sortBy: { firstName: 1 } }
+                    }
+                }
+            },
+
+            // 8. Return sanitized users only
+            { $project: { _id: 0, sanitizedUsers: 1, unusedMemberIds: 1, members: 1, usedWinningIds: 1 } }
+        ];
+
+        // If using NestJS: add logs for debugging each stage.
+        const result = await this.committeeModel.aggregate(pipeline).allowDiskUse(true).exec();
+        // Add console.log to inspect result, unusedMemberIds, members, usedWinningIds
+        // console.log('Aggregation result:', JSON.stringify(result, null, 2));
+        // If result is empty, directly query the raw documents for manual verification.
+
+        // Returns array of sanitized unused members.
+        return (result[0] && result[0].sanitizedUsers) || [];
     }
 
     async getPaymentsForInstallment(

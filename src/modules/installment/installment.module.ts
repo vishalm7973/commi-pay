@@ -5,10 +5,12 @@ import { InstallmentPayment, InstallmentPaymentSchema } from 'src/schemas/instal
 import { Committee, CommitteeSchema } from 'src/schemas/committee.schema';
 import { InstallmentController } from './installment.controller';
 import { InstallmentService } from './installment.service';
+import { User, UserSchema } from 'src/schemas/user.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Installment.name, schema: InstallmentSchema }]),
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     MongooseModule.forFeature([{ name: InstallmentPayment.name, schema: InstallmentPaymentSchema }]),
     MongooseModule.forFeature([{ name: Committee.name, schema: CommitteeSchema }]),
   ],

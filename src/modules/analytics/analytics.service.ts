@@ -295,6 +295,7 @@ export class AnalyticsService {
                             firstName: '$memberDoc.firstName',
                             lastName: '$memberDoc.lastName',
                             phoneNumber: '$memberDoc.phoneNumber',
+                            countryCode: '$memberDoc.countryCode',
                             totalPendingAmount: 1,
                             pendingCount: 1,
                         },

@@ -76,54 +76,65 @@ export class InstallmentService {
     }
 
     async markPayment(
-        paymentId: string,
+        installmentId: string,
+        memberId: string,
         updateData: UpdateInstallmentPaymentDto,
         user: UserToken
     ) {
         const createdById = new Types.ObjectId(user.id);
+
+        // Find one to fetch installment amount
         const payment = await this.paymentModel
-            .findOne({ _id: paymentId, createdBy: createdById })
+            .findOne({
+                installment: new Types.ObjectId(installmentId),
+                member: new Types.ObjectId(memberId),
+                createdBy: createdById
+            })
             .populate('installment', 'monthlyContribution')
             .exec();
 
         if (!payment) throw new NotFoundException('Installment payment record not found');
 
         let amount: number = 0;
-        if (payment.installment && typeof payment.installment === 'object' && 'monthlyContribution' in payment.installment) {
+        if (
+            payment.installment &&
+            typeof payment.installment === 'object' &&
+            'monthlyContribution' in payment.installment
+        ) {
             amount = (payment.installment as { monthlyContribution: number }).monthlyContribution;
         }
 
         const isMarkingPaid = updateData.isPaid;
 
-        // Check if the current payment data already matches the requested update
-        const isAlreadyPaid =
-            payment.status === PaymentStatus.COMPLETED &&
-            payment.amountPaid === amount &&
-            payment.paymentDate !== null;
+        let updateFields: any = {};
 
-        const isAlreadyPending =
-            payment.status === PaymentStatus.PENDING &&
-            payment.amountPaid === 0 &&
-            (payment.paymentDate === null || payment.paymentDate === undefined);
-
-        // If no change needed, return early without saving
-        if ((isMarkingPaid && isAlreadyPaid) || (!isMarkingPaid && isAlreadyPending)) {
-            return payment;
-        }
-
-        // Apply updates only if changes are needed
         if (isMarkingPaid) {
-            payment.status = PaymentStatus.COMPLETED;
-            payment.amountPaid = amount;
-            payment.paymentDate = new Date();
+            updateFields = {
+                status: PaymentStatus.COMPLETED,
+                amountPaid: amount,
+                paymentDate: new Date()
+            };
         } else {
-            payment.status = PaymentStatus.PENDING;
-            payment.amountPaid = 0;
-            payment.paymentDate = null;
+            updateFields = {
+                status: PaymentStatus.PENDING,
+                amountPaid: 0,
+                paymentDate: null
+            };
         }
 
-        return payment.save();
+        // Update all matching records
+        const result = await this.paymentModel.updateMany(
+            {
+                installment: new Types.ObjectId(installmentId),
+                member: new Types.ObjectId(memberId),
+                createdBy: createdById
+            },
+            { $set: updateFields }
+        );
+
+        return result;
     }
+
 
     async delete(installmentId: string, user: UserToken): Promise<boolean> {
         const session = await this.connection.startSession();

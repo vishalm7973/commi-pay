@@ -40,19 +40,26 @@ export class InstallmentController {
         return sendResponse(true, CREATED, 'Installment created successfully', response);
     }
 
-    @Patch('/payment/:paymentId')
-    @ApiOperation({ summary: 'Mark or unmark an installment payment for a member' })
+    @Patch(':installmentId/payment/:memberId')
+    @ApiOperation({ summary: 'Mark or unmark all installment payments for a member' })
     @ApiBody({ type: UpdateInstallmentPaymentDto })
     @ApiOkResponse({ description: 'Payment status updated' })
     @ApiNotFoundResponse({ description: 'Installment payment record not found' })
     async markPayment(
-        @Param('paymentId') paymentId: string,
+        @Param('installmentId') installmentId: string,
+        @Param('memberId') memberId: string,
         @Body() updateDto: UpdateInstallmentPaymentDto,
         @Req() req: UserRequest
     ) {
-        const response = await this.installmentService.markPayment(paymentId, updateDto, req.user);
+        const response = await this.installmentService.markPayment(
+            installmentId,
+            memberId,
+            updateDto,
+            req.user
+        );
         return sendResponse(true, OK, 'Payment status updated successfully', response);
     }
+
 
     @Delete(':installmentId')
     @ApiOperation({ summary: 'Delete installment and its payment records' })
